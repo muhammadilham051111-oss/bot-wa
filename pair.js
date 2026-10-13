@@ -1,10 +1,15 @@
-console.log("LOG: Bot starting with Groq AI integration...");
+console.log("LOG: Bot starting with fixed reconnect loop...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 
+let isConnecting = false;
+
 async function startBot() {
+    if (isConnecting) return;
+    isConnecting = true;
+
     // Restore sesi dari SESSION_DATA jika ada
     if (process.env.SESSION_DATA) {
         if (!fs.existsSync('./auth_temp')) {
@@ -14,7 +19,6 @@ async function startBot() {
             const decodedData = JSON.parse(Buffer.from(process.env.SESSION_DATA, 'base64').toString('utf-8'));
             if (decodedData.creds) {
                 fs.writeFileSync('./auth_temp/creds.json', JSON.stringify(decodedData.creds, null, 2));
-                console.log("LOG: Berhasil memuat sesi dari SESSION_DATA variabel.");
             }
         } catch (e) {
             console.error("❌ Gagal memparsing SESSION_DATA:", e);
@@ -29,6 +33,8 @@ async function startBot() {
         browser: Browsers.ubuntu('Chrome')
     });
 
+    isConnecting = false;
+
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
@@ -36,14 +42,20 @@ async function startBot() {
         console.log("LOG: Status Koneksi:", connection);
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            
+            console.log(`LOG: Koneksi tertutup (Status Code: ${statusCode}). Reconnect: ${shouldReconnect}`);
+
             if (shouldReconnect) {
-                startBot();
+                setTimeout(() => {
+                    startBot();
+                }, 5000); // Jeda 5 detik sebelum reconnect agar tidak loop
             } else {
-                console.log("❌ Perangkat terputus/Logged Out.");
+                console.log("❌ Perangkat terputus (Logged Out).");
             }
         } else if (connection === 'open') {
-            console.log('\n✅ BOT JEFRI DENGAN GROQ AI BERHASIL TERHUBUNG!\n');
+            console.log('\n✅ BOT JEFRI DENGAN GROQ AI BERHASIL TERHUBUNG SEPENUHNYA!\n');
         }
     });
 
@@ -52,25 +64,19 @@ async function startBot() {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
-            if (!msg.message) return;
+            if (!msg.message || msg.key.fromMe) return;
             
             const body = msg.message.conversation || 
                          msg.message.extendedTextMessage?.text || '';
             const from = msg.key.remoteJid;
 
-            // Jangan merespons pesan dari bot sendiri
-            if (msg.key.fromMe) return;
-
             console.log(`📩 Pesan masuk dari ${from}: ${body}`);
 
-            // Perintah .ping
             if (body.toLowerCase() === '.ping') {
-                await sock.sendMessage(from, { text: 'Pong! 🏓 Bot Jefri & Groq AI aktif!' }, { quoted: msg });
+                await sock.sendMessage(from, { text: 'Pong! 🏓 Bot Jefri & Groq AI aktif dan stabil!' }, { quoted: msg });
                 return;
             }
 
-            // Fitur Groq AI (Aktif jika pesan diawali dengan .ai atau prefix tanya, atau otomatis merespons)
-            // Di sini kita buat trigger prefix `.ai <pesan>` atau merespons semua chat jika di chat pribadi
             if (body.startsWith('.ai ')) {
                 const prompt = body.slice(4).trim();
                 if (!prompt) {
@@ -78,7 +84,6 @@ async function startBot() {
                     return;
                 }
 
-                // Kirim indikator sedang mengetik
                 await sock.presenceSubscribe(from);
                 await sock.sendPresenceUpdate('composing', from);
 
@@ -89,7 +94,6 @@ async function startBot() {
                         return;
                     }
 
-                    // Request ke Groq API menggunakan native fetch Node.js
                     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                         method: 'POST',
                         headers: {
@@ -97,7 +101,7 @@ async function startBot() {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            model: 'llama-3.3-70b-versatile', // Model cepat dan pintar dari Groq
+                            model: 'llama-3.3-70b-versatile',
                             messages: [
                                 { role: 'system', content: 'Kamu adalah Jefri, asisten WhatsApp yang ramah, santai, dan membantu.' },
                                 { role: 'user', content: prompt }
@@ -118,20 +122,6 @@ async function startBot() {
             }
         }
     });
-
-    if (!sock.authState.creds.registered && !process.env.SESSION_DATA) {
-        setTimeout(async () => {
-            const phoneNumber = process.env.NOMOR_HP;
-            if (!phoneNumber) return;
-            try {
-                let code = await sock.requestPairingCode(phoneNumber.trim());
-                code = code?.match(/.{1,4}/g)?.join('-') || code;
-                console.log(`\n🔑 KODE PAIRING KAMU: ${code}\n`);
-            } catch (err) {
-                console.error('❌ Gagal minta kode pairing:', err);
-            }
-        }, 5000);
-    }
 }
 
 startBot();
