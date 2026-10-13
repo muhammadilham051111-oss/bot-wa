@@ -1,16 +1,10 @@
-console.log("LOG: Bot starting with absolute stable single-instance fix...");
+console.log("LOG: Bot starting with clean disconnect handler...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 
-let sock = null;
-let isInitializing = false;
-
 async function startBot() {
-    if (isInitializing) return;
-    isInitializing = true;
-
     if (process.env.SESSION_DATA) {
         if (!fs.existsSync('./auth_temp')) {
             fs.mkdirSync('./auth_temp', { recursive: true });
@@ -27,15 +21,13 @@ async function startBot() {
 
     const { state, saveCreds } = await useMultiFileAuthState('./auth_temp');
 
-    sock = makeWASocket({
+    const sock = makeWASocket({
         logger: pino({ level: 'silent' }),
         auth: state,
         browser: Browsers.ubuntu('Chrome'),
         markOnlineOnConnect: false,
         generateHighQualityLinkPreview: true
     });
-
-    isInitializing = false;
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -47,10 +39,10 @@ async function startBot() {
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            console.log(`LOG: Koneksi tertutup (Status Code: ${statusCode}). Reconnect: ${shouldReconnect}`);
+            console.log(`LOG: Koneksi tertutup (Status Code: ${statusCode})`);
 
-            if (shouldReconnect) {
+            // Jika error 440 atau terputus biasa, lakukan reconnect dengan aman tanpa crash kontainer
+            if (statusCode !== DisconnectReason.loggedOut) {
                 setTimeout(() => {
                     startBot();
                 }, 5000);
@@ -68,7 +60,6 @@ async function startBot() {
         for (const msg of messages) {
             if (!msg.message) continue;
             
-            // Agar bisa dites lewat chat ke diri sendiri, kita hapus pembatasan msg.key.fromMe
             const mtype = Object.keys(msg.message)[0];
             let body = '';
             
