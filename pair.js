@@ -1,15 +1,10 @@
-console.log("LOG: Bot starting with fixed reconnect loop...");
+console.log("LOG: Bot starting with optimized stable connection...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 
-let isConnecting = false;
-
 async function startBot() {
-    if (isConnecting) return;
-    isConnecting = true;
-
     // Restore sesi dari SESSION_DATA jika ada
     if (process.env.SESSION_DATA) {
         if (!fs.existsSync('./auth_temp')) {
@@ -30,16 +25,19 @@ async function startBot() {
     const sock = makeWASocket({
         logger: pino({ level: 'silent' }),
         auth: state,
-        browser: Browsers.ubuntu('Chrome')
+        browser: Browsers.ubuntu('Chrome'),
+        markOnlineOnConnect: true,
+        generateHighQualityLinkPreview: true
     });
-
-    isConnecting = false;
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-        console.log("LOG: Status Koneksi:", connection);
+        
+        if (connection) {
+            console.log("LOG: Status Koneksi:", connection);
+        }
 
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
@@ -48,9 +46,10 @@ async function startBot() {
             console.log(`LOG: Koneksi tertutup (Status Code: ${statusCode}). Reconnect: ${shouldReconnect}`);
 
             if (shouldReconnect) {
+                // Tunggu sebentar lalu jalankan ulang socket tanpa restart seluruh proses
                 setTimeout(() => {
                     startBot();
-                }, 5000); // Jeda 5 detik sebelum reconnect agar tidak loop
+                }, 3000);
             } else {
                 console.log("❌ Perangkat terputus (Logged Out).");
             }
