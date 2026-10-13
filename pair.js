@@ -1,11 +1,10 @@
-console.log("LOG: Starting optimized Jefri Bot (Complete 45 Features & Fixed Pairing)...");
+console.log("LOG: Starting Jefri Bot with stable Ubuntu browser identity...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 
 async function startBot() {
-    // 1. Bersihkan folder auth lokal jika belum ada SESSION_DATA agar tidak ada sisa token bentrok
     if (!process.env.SESSION_DATA && fs.existsSync('./auth_temp')) {
         fs.rmSync('./auth_temp', { recursive: true, force: true });
     }
@@ -13,7 +12,6 @@ async function startBot() {
         fs.mkdirSync('./auth_temp', { recursive: true });
     }
 
-    // 2. Muat SESSION_DATA jika tersedia di Railway Variables
     if (process.env.SESSION_DATA) {
         try {
             const decodedData = JSON.parse(Buffer.from(process.env.SESSION_DATA, 'base64').toString('utf-8'));
@@ -31,8 +29,8 @@ async function startBot() {
     const sock = makeWASocket({
         logger: pino({ level: 'silent' }),
         auth: state,
-        // Spoofing browser ke macOS Safari untuk menghindari batasan/stuck pairing
-        browser: Browsers.macOS('Desktop'),
+        // Menggunakan identitas Ubuntu Chrome yang stabil
+        browser: Browsers.ubuntu('Chrome'),
         markOnlineOnConnect: false,
         generateHighQualityLinkPreview: true
     });
@@ -49,16 +47,14 @@ async function startBot() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             console.log(`LOG: Koneksi ditutup (Status Code: ${statusCode})`);
 
-            // Mencegah looping berulang jika terjadi error 440 (Conflict)
             if (statusCode === 440 || statusCode === DisconnectReason.loggedOut) {
-                console.log("⚠️ TERDETEKSI KONFLIK/LOGOUT (440). Hapus variabel NOMOR_HP & perbarui SESSION_DATA!");
+                console.log("⚠️ TERDETEKSI KONFLIK/LOGOUT (440). Perbarui SESSION_DATA!");
             } else {
                 setTimeout(() => { startBot(); }, 5000);
             }
         } else if (connection === 'open') {
-            console.log('\n✅ BOT JEFRI SEPENUHNYA AKTIF DAN STABIL!\n');
+            console.log('\n✅ BOT JEFRI DENGAN PLAT SE-INDONESIA SIAP!\n');
             
-            // Cetak SESSION_DATA baru ke log hanya jika belum diset di Variables
             try {
                 if (fs.existsSync('./auth_temp/creds.json') && !process.env.SESSION_DATA) {
                     const credsFile = fs.readFileSync('./auth_temp/creds.json', 'utf-8');
@@ -66,7 +62,6 @@ async function startBot() {
                     console.log("\n================== SESSION_DATA BARU ==================");
                     console.log(base64Data);
                     console.log("=======================================================\n");
-                    console.log("Salin teks Base64 di atas ke variabel SESSION_DATA di Railway!");
                 }
             } catch (err) {
                 console.error("Gagal generate Base64 SESSION_DATA:", err);
@@ -74,7 +69,6 @@ async function startBot() {
         }
     });
 
-    // Request pairing code jika belum terdaftar
     if (!sock.authState.creds.registered) {
         setTimeout(async () => {
             const phoneNumber = process.env.NOMOR_HP;
@@ -83,7 +77,7 @@ async function startBot() {
                 return;
             }
             try {
-                console.log(`Meminta kode pairing baru untuk nomor: ${phoneNumber}...`);
+                console.log(`Meminta kode pairing untuk nomor: ${phoneNumber}...`);
                 let code = await sock.requestPairingCode(phoneNumber.trim());
                 code = code?.match(/.{1,4}/g)?.join('-') || code;
                 console.log(`\n🔑 KODE PAIRING KAMU: ${code}\n`);
@@ -93,7 +87,6 @@ async function startBot() {
         }, 6000);
     }
 
-    // Handler Pesan
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
 
@@ -118,7 +111,6 @@ async function startBot() {
             const text = body.trim();
             const lowerText = text.toLowerCase();
 
-            // 1. MENU UTAMA (45 FITUR)
             if (lowerText === '.menu' || lowerText === '.help') {
                 const menuText = `🤖 *DAFTAR 45 FITUR KEREN BOT JEFRI* 🤖
 
@@ -175,21 +167,17 @@ async function startBot() {
 42. \`.reset\` - Bersihkan memori bot
 43. \`.saran\` - Ide kreatif dadakan
 44. \`.math <soal>\` - Hitung matematika
-45. \`.tanya <teks>\` - Konsultasi gaul
-
-Ketik perintah di atas di chat untuk menggunakannya! 🚀`;
+45. \`.tanya <teks>\` - Konsultasi gaul`;
 
                 await sock.sendMessage(from, { text: menuText }, { quoted: msg });
                 continue;
             }
 
-            // 2. PING
             if (lowerText === '.ping') {
-                await sock.sendMessage(from, { text: '🏓 Pong! Bot Jefri aktif & responsif!' }, { quoted: msg });
+                await sock.sendMessage(from, { text: '🏓 Pong! Bot Jefri responsif & stabil!' }, { quoted: msg });
                 continue;
             }
 
-            // 3. JODOH
             if (lowerText.startsWith('.jodoh')) {
                 const pasangan = text.slice(6).trim();
                 if (!pasangan) {
@@ -203,7 +191,6 @@ Ketik perintah di atas di chat untuk menggunakannya! 🚀`;
                 continue;
             }
 
-            // 4. PLAT NOMOR SE-INDONESIA
             if (lowerText.startsWith('.plat')) {
                 const kodePlat = text.slice(5).trim().toUpperCase();
                 if (!kodePlat) {
@@ -212,7 +199,6 @@ Ketik perintah di atas di chat untuk menggunakannya! 🚀`;
                 }
                 
                 let daerah = 'Wilayah tidak diketahui atau plat khusus/gaib.';
-                
                 if (kodePlat.startsWith('A')) daerah = 'Banten (Serang, Cilegon, Pandeglang, Lebak)';
                 else if (kodePlat.startsWith('B')) daerah = 'DKI Jakarta, Depok, Bekasi, Tangerang';
                 else if (kodePlat.startsWith('D')) daerah = 'Bandung, Cimahi, Bandung Barat';
@@ -249,11 +235,10 @@ Ketik perintah di atas di chat untuk menggunakannya! 🚀`;
                 continue;
             }
 
-            // 5. GROQ AI
             if (lowerText.startsWith('.ai')) {
                 const prompt = text.slice(3).trim();
                 if (!prompt) {
-                    await sock.sendMessage(from, { text: '⚠️ Masukkan pertanyaannya! Contoh: `.ai Halo Jefri`' }, { quoted: msg });
+                    await sock.sendMessage(from, { text: '⚠️ Masukkan pertanyaannya! Contoh: `.ai Halo`' }, { quoted: msg });
                     continue;
                 }
 
@@ -284,7 +269,7 @@ Ketik perintah di atas di chat untuk menggunakannya! 🚀`;
                     });
 
                     const data = await response.json();
-                    const replyText = data.choices?.[0]?.message?.content || 'Maaf, AI lagi tidak merespon.';
+                    const replyText = data.choices?.[0]?.message?.content || 'Maaf, gagal mendapatkan respons.';
                     await sock.sendMessage(from, { text: replyText }, { quoted: msg });
                 } catch (err) {
                     console.error('❌ Error Groq API:', err);
