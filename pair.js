@@ -1,10 +1,11 @@
-console.log("LOG: Bot starting with clean disconnect handler...");
+console.log("LOG: Bot starting with clean session recovery...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 
 async function startBot() {
+    // Bersihkan auth_temp yang korup jika ada konflik berulang
     if (process.env.SESSION_DATA) {
         if (!fs.existsSync('./auth_temp')) {
             fs.mkdirSync('./auth_temp', { recursive: true });
@@ -13,6 +14,7 @@ async function startBot() {
             const decodedData = JSON.parse(Buffer.from(process.env.SESSION_DATA, 'base64').toString('utf-8'));
             if (decodedData.creds) {
                 fs.writeFileSync('./auth_temp/creds.json', JSON.stringify(decodedData.creds, null, 2));
+                console.log("LOG: Berhasil memuat ulang kredensial bersih dari SESSION_DATA.");
             }
         } catch (e) {
             console.error("❌ Gagal memparsing SESSION_DATA:", e);
@@ -26,7 +28,8 @@ async function startBot() {
         auth: state,
         browser: Browsers.ubuntu('Chrome'),
         markOnlineOnConnect: false,
-        generateHighQualityLinkPreview: true
+        generateHighQualityLinkPreview: true,
+        printQRInTerminal: false
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -41,13 +44,13 @@ async function startBot() {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             console.log(`LOG: Koneksi tertutup (Status Code: ${statusCode})`);
 
-            // Jika error 440 atau terputus biasa, lakukan reconnect dengan aman tanpa crash kontainer
+            // Tangani reconnect dengan aman
             if (statusCode !== DisconnectReason.loggedOut) {
                 setTimeout(() => {
                     startBot();
                 }, 5000);
             } else {
-                console.log("❌ Perangkat terputus (Logged Out).");
+                console.log("❌ Perangkat terputus (Logged Out). Sesi perlu diperbarui.");
             }
         } else if (connection === 'open') {
             console.log('\n✅ BOT JEFRI DENGAN GROQ AI BERHASIL TERHUBUNG SEPENUHNYA!\n');
