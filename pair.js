@@ -1,11 +1,10 @@
-console.log("LOG: Bot starting with optimized stable connection...");
+console.log("LOG: Bot starting with robust message parser...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 
 async function startBot() {
-    // Restore sesi dari SESSION_DATA jika ada
     if (process.env.SESSION_DATA) {
         if (!fs.existsSync('./auth_temp')) {
             fs.mkdirSync('./auth_temp', { recursive: true });
@@ -34,7 +33,6 @@ async function startBot() {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-        
         if (connection) {
             console.log("LOG: Status Koneksi:", connection);
         }
@@ -42,14 +40,10 @@ async function startBot() {
         if (connection === 'close') {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            
             console.log(`LOG: Koneksi tertutup (Status Code: ${statusCode}). Reconnect: ${shouldReconnect}`);
 
             if (shouldReconnect) {
-                // Tunggu sebentar lalu jalankan ulang socket tanpa restart seluruh proses
-                setTimeout(() => {
-                    startBot();
-                }, 3000);
+                setTimeout(() => { startBot(); }, 3000);
             } else {
                 console.log("❌ Perangkat terputus (Logged Out).");
             }
@@ -65,23 +59,40 @@ async function startBot() {
         for (const msg of messages) {
             if (!msg.message || msg.key.fromMe) return;
             
-            const body = msg.message.conversation || 
-                         msg.message.extendedTextMessage?.text || '';
+            // Ekstraksi teks yang lebih aman mencakup berbagai tipe pesan WhatsApp
+            const mtype = Object.keys(msg.message)[0];
+            let body = '';
+            
+            if (mtype === 'conversation') {
+                body = msg.message.conversation;
+            } else if (mtype === 'extendedTextMessage') {
+                body = msg.message.extendedTextMessage.text;
+            } else if (mtype === 'imageMessage' && msg.message.imageMessage.caption) {
+                body = msg.message.imageMessage.caption;
+            } else if (mtype === 'videoMessage' && msg.message.videoMessage.caption) {
+                body = msg.message.videoMessage.caption;
+            }
+
             const from = msg.key.remoteJid;
+            console.log(`📩 Pesan dari ${from} [Tipe: ${mtype}]: "${body}"`);
 
-            console.log(`📩 Pesan masuk dari ${from}: ${body}`);
+            if (!body) return;
 
+            // Perintah .ping
             if (body.toLowerCase() === '.ping') {
                 await sock.sendMessage(from, { text: 'Pong! 🏓 Bot Jefri & Groq AI aktif dan stabil!' }, { quoted: msg });
                 return;
             }
 
-            if (body.startsWith('.ai ')) {
+            // Perintah .ai
+            if (body.startsWith('.ai ') || body.startsWith('.AI ')) {
                 const prompt = body.slice(4).trim();
                 if (!prompt) {
                     await sock.sendMessage(from, { text: '⚠️ Masukkan pertanyaannya, contoh: `.ai Halo siapa kamu?`' }, { quoted: msg });
                     return;
                 }
+
+                console.log(`🤖 Memproses prompt Groq AI: "${prompt}"`);
 
                 await sock.presenceSubscribe(from);
                 await sock.sendPresenceUpdate('composing', from);
@@ -113,6 +124,7 @@ async function startBot() {
                     const replyText = data.choices?.[0]?.message?.content || 'Maaf, gagal mendapatkan respons dari Groq AI.';
 
                     await sock.sendMessage(from, { text: replyText }, { quoted: msg });
+                    console.log('✅ Respons Groq AI berhasil dikirim.');
 
                 } catch (err) {
                     console.error('❌ Error Groq API:', err);
