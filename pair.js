@@ -1,10 +1,16 @@
-console.log("LOG: Bot starting with detailed AI debugger...");
+console.log("LOG: Bot starting with absolute stable single-instance fix...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 
+let sock = null;
+let isInitializing = false;
+
 async function startBot() {
+    if (isInitializing) return;
+    isInitializing = true;
+
     if (process.env.SESSION_DATA) {
         if (!fs.existsSync('./auth_temp')) {
             fs.mkdirSync('./auth_temp', { recursive: true });
@@ -21,13 +27,15 @@ async function startBot() {
 
     const { state, saveCreds } = await useMultiFileAuthState('./auth_temp');
 
-    const sock = makeWASocket({
+    sock = makeWASocket({
         logger: pino({ level: 'silent' }),
         auth: state,
         browser: Browsers.ubuntu('Chrome'),
-        markOnlineOnConnect: true,
+        markOnlineOnConnect: false,
         generateHighQualityLinkPreview: true
     });
+
+    isInitializing = false;
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -43,7 +51,9 @@ async function startBot() {
             console.log(`LOG: Koneksi tertutup (Status Code: ${statusCode}). Reconnect: ${shouldReconnect}`);
 
             if (shouldReconnect) {
-                setTimeout(() => { startBot(); }, 3000);
+                setTimeout(() => {
+                    startBot();
+                }, 5000);
             } else {
                 console.log("❌ Perangkat terputus (Logged Out).");
             }
@@ -56,8 +66,9 @@ async function startBot() {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
-            if (!msg.message || msg.key.fromMe) return;
+            if (!msg.message) continue;
             
+            // Agar bisa dites lewat chat ke diri sendiri, kita hapus pembatasan msg.key.fromMe
             const mtype = Object.keys(msg.message)[0];
             let body = '';
             
@@ -74,18 +85,13 @@ async function startBot() {
 
             if (!body) continue;
 
-            // Deteksi perintah .ping
             if (body.toLowerCase() === '.ping') {
-                console.log("⚡ Menjalankan perintah .ping");
                 await sock.sendMessage(from, { text: 'Pong! 🏓 Bot Jefri & Groq AI aktif dan stabil!' }, { quoted: msg });
                 continue;
             }
 
-            // Deteksi perintah .ai (mendukung .ai atau .AI dengan spasi maupun langsung teks)
             if (body.toLowerCase().startsWith('.ai')) {
                 const prompt = body.slice(3).trim();
-                console.log(`🤖 Perintah .ai terdeteksi. Prompt: "${prompt}"`);
-
                 if (!prompt) {
                     await sock.sendMessage(from, { text: '⚠️ Masukkan pertanyaannya, contoh: `.ai Halo siapa kamu?`' }, { quoted: msg });
                     continue;
@@ -93,7 +99,6 @@ async function startBot() {
 
                 const apiKey = process.env.GROQ_API_KEY;
                 if (!apiKey) {
-                    console.error("❌ ERROR: GROQ_API_KEY kosong di environment variables!");
                     await sock.sendMessage(from, { text: '❌ GROQ_API_KEY belum diatur di Variables Railway!' }, { quoted: msg });
                     continue;
                 }
@@ -102,7 +107,6 @@ async function startBot() {
                 await sock.sendPresenceUpdate('composing', from);
 
                 try {
-                    console.log("🌐 Mengirim request ke Groq API...");
                     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                         method: 'POST',
                         headers: {
@@ -120,20 +124,13 @@ async function startBot() {
                     });
 
                     const data = await response.json();
-                    if (data.error) {
-                        console.error("❌ Groq API Error Response:", data.error);
-                        await sock.sendMessage(from, { text: `❌ Error dari Groq: ${data.error.message}` }, { quoted: msg });
-                        continue;
-                    }
-
                     const replyText = data.choices?.[0]?.message?.content || 'Maaf, gagal mendapatkan respons dari Groq AI.';
-                    console.log("✅ Berhasil mendapatkan balasan dari Groq AI.");
 
                     await sock.sendMessage(from, { text: replyText }, { quoted: msg });
 
                 } catch (err) {
-                    console.error('❌ Error Fetch Groq API:', err);
-                    await sock.sendMessage(from, { text: '❌ Terjadi kesalahan jaringan saat menghubungi server Groq AI.' }, { quoted: msg });
+                    console.error('❌ Error Groq API:', err);
+                    await sock.sendMessage(from, { text: '❌ Terjadi kesalahan saat menghubungi server Groq AI.' }, { quoted: msg });
                 }
             }
         }
