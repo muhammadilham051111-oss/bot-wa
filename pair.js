@@ -1,14 +1,26 @@
-console.log("LOG: Bot baru dari nol dimulai...");
+console.log("LOG: Bot starting with SESSION_DATA support...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
 
-if (fs.existsSync('./auth_temp')) {
-    fs.rmSync('./auth_temp', { recursive: true, force: true });
-}
-
 async function startBot() {
+    // Jika ada SESSION_DATA di environment variables, restore ke auth_temp
+    if (process.env.SESSION_DATA) {
+        if (!fs.existsSync('./auth_temp')) {
+            fs.mkdirSync('./auth_temp', { recursive: true });
+        }
+        try {
+            const decodedData = JSON.parse(Buffer.from(process.env.SESSION_DATA, 'base64').toString('utf-8'));
+            if (decodedData.creds) {
+                fs.writeFileSync('./auth_temp/creds.json', JSON.stringify(decodedData.creds, null, 2));
+                console.log("LOG: Berhasil memuat sesi dari SESSION_DATA variabel.");
+            }
+        } catch (e) {
+            console.error("❌ Gagal memparsing SESSION_DATA:", e);
+        }
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState('./auth_temp');
 
     const sock = makeWASocket({
@@ -27,23 +39,17 @@ async function startBot() {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) {
                 startBot();
+            } else {
+                console.log("❌ Perangkat terputus/Logged Out.");
             }
         } else if (connection === 'open') {
-            console.log('\n✅ BERHASIL TERHUBUNG!\n');
-            try {
-                const credsData = fs.readFileSync('./auth_temp/creds.json', 'utf-8');
-                const base64Data = Buffer.from(JSON.stringify({ creds: JSON.parse(credsData), keys: {} })).toString('base64');
-                console.log('================= SESSION DATA =================\n');
-                console.log(base64Data);
-                console.log('\n================================================\n');
-            } catch (e) {
-                console.error('Gagal baca creds:', e);
-            }
+            console.log('\n✅ BOT JEFRI BERHASIL TERHUBUNG SEPENUHNYA!\n');
         }
     });
 
-    setTimeout(async () => {
-        if (!sock.authState.creds.registered) {
+    // Jika belum ada creds yang terdaftar dan tidak ada SESSION_DATA, baru minta pairing code
+    if (!sock.authState.creds.registered && !process.env.SESSION_DATA) {
+        setTimeout(async () => {
             const phoneNumber = process.env.NOMOR_HP;
             if (!phoneNumber) {
                 console.error('❌ NOMOR_HP belum diatur di Variables Railway!');
@@ -57,8 +63,8 @@ async function startBot() {
             } catch (err) {
                 console.error('❌ Gagal minta kode pairing:', err);
             }
-        }
-    }, 5000);
+        }, 5000);
+    }
 }
 
 startBot();
