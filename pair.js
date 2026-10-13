@@ -1,4 +1,4 @@
-console.log("LOG: Bot starting with robust message parser...");
+console.log("LOG: Bot starting with detailed AI debugger...");
 
 const { default: makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
@@ -52,14 +52,12 @@ async function startBot() {
         }
     });
 
-    // Mendengarkan pesan masuk
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
             if (!msg.message || msg.key.fromMe) return;
             
-            // Ekstraksi teks yang lebih aman mencakup berbagai tipe pesan WhatsApp
             const mtype = Object.keys(msg.message)[0];
             let body = '';
             
@@ -69,41 +67,42 @@ async function startBot() {
                 body = msg.message.extendedTextMessage.text;
             } else if (mtype === 'imageMessage' && msg.message.imageMessage.caption) {
                 body = msg.message.imageMessage.caption;
-            } else if (mtype === 'videoMessage' && msg.message.videoMessage.caption) {
-                body = msg.message.videoMessage.caption;
             }
 
             const from = msg.key.remoteJid;
-            console.log(`📩 Pesan dari ${from} [Tipe: ${mtype}]: "${body}"`);
+            console.log(`📩 Pesan dari ${from}: "${body}"`);
 
-            if (!body) return;
+            if (!body) continue;
 
-            // Perintah .ping
+            // Deteksi perintah .ping
             if (body.toLowerCase() === '.ping') {
+                console.log("⚡ Menjalankan perintah .ping");
                 await sock.sendMessage(from, { text: 'Pong! 🏓 Bot Jefri & Groq AI aktif dan stabil!' }, { quoted: msg });
-                return;
+                continue;
             }
 
-            // Perintah .ai
-            if (body.startsWith('.ai ') || body.startsWith('.AI ')) {
-                const prompt = body.slice(4).trim();
+            // Deteksi perintah .ai (mendukung .ai atau .AI dengan spasi maupun langsung teks)
+            if (body.toLowerCase().startsWith('.ai')) {
+                const prompt = body.slice(3).trim();
+                console.log(`🤖 Perintah .ai terdeteksi. Prompt: "${prompt}"`);
+
                 if (!prompt) {
                     await sock.sendMessage(from, { text: '⚠️ Masukkan pertanyaannya, contoh: `.ai Halo siapa kamu?`' }, { quoted: msg });
-                    return;
+                    continue;
                 }
 
-                console.log(`🤖 Memproses prompt Groq AI: "${prompt}"`);
+                const apiKey = process.env.GROQ_API_KEY;
+                if (!apiKey) {
+                    console.error("❌ ERROR: GROQ_API_KEY kosong di environment variables!");
+                    await sock.sendMessage(from, { text: '❌ GROQ_API_KEY belum diatur di Variables Railway!' }, { quoted: msg });
+                    continue;
+                }
 
                 await sock.presenceSubscribe(from);
                 await sock.sendPresenceUpdate('composing', from);
 
                 try {
-                    const apiKey = process.env.GROQ_API_KEY;
-                    if (!apiKey) {
-                        await sock.sendMessage(from, { text: '❌ GROQ_API_KEY belum diatur di Variables Railway!' }, { quoted: msg });
-                        return;
-                    }
-
+                    console.log("🌐 Mengirim request ke Groq API...");
                     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
                         method: 'POST',
                         headers: {
@@ -121,14 +120,20 @@ async function startBot() {
                     });
 
                     const data = await response.json();
+                    if (data.error) {
+                        console.error("❌ Groq API Error Response:", data.error);
+                        await sock.sendMessage(from, { text: `❌ Error dari Groq: ${data.error.message}` }, { quoted: msg });
+                        continue;
+                    }
+
                     const replyText = data.choices?.[0]?.message?.content || 'Maaf, gagal mendapatkan respons dari Groq AI.';
+                    console.log("✅ Berhasil mendapatkan balasan dari Groq AI.");
 
                     await sock.sendMessage(from, { text: replyText }, { quoted: msg });
-                    console.log('✅ Respons Groq AI berhasil dikirim.');
 
                 } catch (err) {
-                    console.error('❌ Error Groq API:', err);
-                    await sock.sendMessage(from, { text: '❌ Terjadi kesalahan saat menghubungi server Groq AI.' }, { quoted: msg });
+                    console.error('❌ Error Fetch Groq API:', err);
+                    await sock.sendMessage(from, { text: '❌ Terjadi kesalahan jaringan saat menghubungi server Groq AI.' }, { quoted: msg });
                 }
             }
         }
