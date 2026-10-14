@@ -22,31 +22,44 @@ async function startBot() {
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === "open") {
-            console.log("Jefri Bot Berhasil Terhubung secara Cepat!");
+            console.log("Jefri Bot Berhasil Terhubung dan Siap Merespons!");
         } else if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startBot();
         }
     });
 
-    sock.ev.on("messages.upsert", async (m) => {
+    sock.ev.on("messages.upsert", async (chatUpdate) => {
         try {
-            for (const msg of m.messages) {
-                if (!msg.message) continue;
+            const mek = chatUpdate.messages[0];
+            if (!mek.message) return;
 
-                const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
-                if (!textMessage) continue;
+            // Debug log ke Railway untuk melihat setiap pesan yang masuk
+            console.log("Pesan diterima dari:", mek.key.remoteJid);
 
-                const remoteJid = msg.key.remoteJid;
-                const command = textMessage.trim().toLowerCase();
+            const messageType = Object.keys(mek.message)[0];
+            let textMessage = "";
 
-                // Balas !ping maupun .ping (Bisa dari kamu sendiri maupun orang lain)
-                if (command === "!ping" || command === ".ping") {
-                    await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Respon cepat aktif." }, { quoted: msg });
-                }
+            if (messageType === "conversation") {
+                textMessage = mek.message.conversation;
+            } else if (messageType === "extendedTextMessage") {
+                textMessage = mek.message.extendedTextMessage.text;
+            } else if (messageType === "imageMessage" && mek.message.imageMessage.caption) {
+                textMessage = mek.message.imageMessage.caption;
+            }
+
+            if (!textMessage) return;
+            console.log("Isi Teks:", textMessage);
+
+            const remoteJid = mek.key.remoteJid;
+            const command = textMessage.trim().toLowerCase();
+
+            // Respon otomatis untuk perintah ping
+            if (command === "!ping" || command === ".ping") {
+                await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot Jefri merespons dengan cepat." }, { quoted: mek });
             }
         } catch (err) {
-            // Abaikan error minor
+            console.log("Error pada handler pesan:", err);
         }
     });
 }
