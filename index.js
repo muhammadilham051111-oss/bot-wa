@@ -20,69 +20,69 @@ async function startBot() {
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection } = update;
         if (connection === "open") {
-            console.log("=== BOT JEFRI AKTIF & SIAP DENGAN FITUR BARU ===");
-        } else if (connection === "close") {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) startBot();
+            console.log("=== BOT JEFRI SIAP 100% ===");
         }
     });
 
+    // Perbaikan total penangkapan event pesan masuk
     sock.ev.on("messages.upsert", async (chatUpdate) => {
         try {
-            for (const mek of chatUpdate.messages) {
-                if (!mek.message) continue;
+            const mek = chatUpdate.messages[0];
+            if (!mek.message) return;
+            
+            // Jangan proses pesan dari status/broadcast
+            if (mek.key.remoteJid === "status@broadcast") return;
 
-                // Ambil teks dari berbagai jenis pesan
-                const textMessage = mek.message.conversation || 
-                                    mek.message.extendedTextMessage?.text || 
-                                    mek.message.imageMessage?.caption || "";
+            // Ekstrak teks dari berbagai kemungkinan struktur pesan WhatsApp
+            const type = Object.keys(mek.message)[0];
+            let body = "";
 
-                if (!textMessage) continue;
+            if (type === "conversation") {
+                body = mek.message.conversation;
+            } else if (type === "extendedTextMessage") {
+                body = mek.message.extendedTextMessage.text;
+            } else if (type === "imageMessage" && mek.message.imageMessage.caption) {
+                body = mek.message.imageMessage.caption;
+            } else if (type === "videoMessage" && mek.message.videoMessage.caption) {
+                body = mek.message.videoMessage.caption;
+            }
 
-                const remoteJid = mek.key.remoteJid;
-                const isGroup = remoteJid.endsWith("@g.us");
-                const args = textMessage.trim().split(/ +/);
-                const command = args.shift().toLowerCase();
+            if (!body) return;
 
-                console.log(`[PESAN MASUK] ${remoteJid}: ${textMessage}`);
+            const from = mek.key.remoteJid;
+            const isGroup = from.endsWith("@g.us");
+            const args = body.trim().split(/ +/);
+            const command = args.shift().toLowerCase();
 
-                // --- HANDLER COMMAND ---
+            console.log(`[PESAN DITERIMA] Dari: ${from} | Isi: ${body}`);
 
-                // 1. Perintah !ping / .ping
-                if (command === "!ping" || command === ".ping") {
-                    await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot Jefri aktif 24/7 di Railway." }, { quoted: mek });
-                }
+            // Eksekusi Perintah
+            switch (command) {
+                case "!ping":
+                case ".ping":
+                    await sock.sendMessage(from, { text: "Pong! ⚡ Bot Jefri Berhasil Merespons!" }, { quoted: mek });
+                    console.log("--> Berhasil membalas !ping");
+                    break;
 
-                // 2. Perintah !menu / .menu
-                else if (command === "!menu" || command === ".menu") {
-                    const menuText = `🤖 *JEFRI BOT MULTI-FUNCTION* 🤖\n\n` +
-                                     `📌 *Daftar Perintah:*\n` +
-                                     `• *!ping* / *.ping* - Cek respon bot\n` +
-                                     `• *!menu* / *.menu* - Menampilkan daftar perintah\n` +
-                                     `• *!hidetag <teks>* - Tag semua anggota grup\n` +
-                                     `• *!info* - Informasi bot\n\n` +
-                                     `⚡ *Status:* Online (Railway Singapore)`;
-                    await sock.sendMessage(remoteJid, { text: menuText }, { quoted: mek });
-                }
+                case "!menu":
+                case ".menu":
+                    const menuText = `🤖 *MENU BOT JEFRI* 🤖\n\n` +
+                                     `• !ping / .ping\n` +
+                                     `• !menu / .menu\n` +
+                                     `• !info\n\n` +
+                                     `Status: Terhubung & Normal!`;
+                    await sock.sendMessage(from, { text: menuText }, { quoted: mek });
+                    console.log("--> Berhasil membalas !menu");
+                    break;
 
-                // 3. Perintah !info / .info
-                else if (command === "!info" || command === ".info") {
-                    await sock.sendMessage(remoteJid, { text: "ℹ️ *Jefri Bot* dikembangkan menggunakan Node.js & Baileys Multi-Device, di-host di Railway." }, { quoted: mek });
-                }
-
-                // 4. Perintah !hidetag (Khusus Grup)
-                else if ((command === "!hidetag" || command === ".hidetag") && isGroup) {
-                    const groupMetadata = await sock.groupMetadata(remoteJid);
-                    const participants = groupMetadata.participants.map(p => p.id);
-                    const tagMessage = args.join(" ") || "Pengumuman!";
-                    
-                    await sock.sendMessage(remoteJid, { text: tagMessage, mentions: participants });
-                }
+                case "!info":
+                    await sock.sendMessage(from, { text: "Bot Jefri aktif menggunakan Node.js dan Baileys di Railway." }, { quoted: mek });
+                    break;
             }
         } catch (err) {
-            console.log("Error handling command:", err);
+            console.log("Error Utama:", err);
         }
     });
 }
