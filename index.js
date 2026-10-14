@@ -75,7 +75,7 @@ async function startBot() {
         );
     });
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
@@ -83,10 +83,17 @@ async function startBot() {
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Koneksi terputus, menghubungkan kembali...', shouldReconnect);
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            console.log(`Koneksi terputus (Status Code: ${statusCode}). Mencoba menghubungkan kembali dalam 5 detik...`);
+            
+            // Tutup koneksi DB & Socket lama agar tidak bentrok
+            try { await client.close(); } catch(e) {}
+            
             if (shouldReconnect) {
-                startBot();
+                setTimeout(() => {
+                    startBot();
+                }, 5000);
             }
         } else if (connection === 'open') {
             console.log('🚀 BOT WHATSAPP BERHASIL TERHUBUNG!');
