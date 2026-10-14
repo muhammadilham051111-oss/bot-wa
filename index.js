@@ -13,76 +13,51 @@ async function startBot() {
     const sock = makeWASocket({
         logger: pino({ level: "silent" }),
         auth: state,
-        browser: ["Ubuntu", "Chrome", "110.0.0.0"],
-        markOnlineOnConnect: true
+        browser: ["Ubuntu", "Chrome", "110.0.0.0"]
     });
 
     sock.ev.on("creds.update", saveCreds);
 
-    sock.ev.on("connection.update", async (update) => {
-        const { connection } = update;
+    sock.ev.on("connection.update", (update) => {
+        const { connection, lastDisconnect } = update;
+        console.log("Status Koneksi:", update);
         if (connection === "open") {
-            console.log("=== BOT JEFRI SIAP 100% ===");
+            console.log("=== BOT BERHASIL TERHUBUNG & SIAP MENERIMA PESAN ===");
+        } else if (connection === "close") {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log("Koneksi terputus, mencoba reconnect:", shouldReconnect);
+            if (shouldReconnect) startBot();
         }
     });
 
-    // Perbaikan total penangkapan event pesan masuk
+    // Tangkap SEMUA event pesan masuk secara mentah
     sock.ev.on("messages.upsert", async (chatUpdate) => {
+        console.log("EVENT MENGIRIM DATA UPSERT:", JSON.stringify(chatUpdate, null, 2));
+        
         try {
             const mek = chatUpdate.messages[0];
-            if (!mek.message) return;
-            
-            // Jangan proses pesan dari status/broadcast
-            if (mek.key.remoteJid === "status@broadcast") return;
+            if (!mek || !mek.message) return;
 
-            // Ekstrak teks dari berbagai kemungkinan struktur pesan WhatsApp
-            const type = Object.keys(mek.message)[0];
-            let body = "";
+            const textMessage = mek.message.conversation || 
+                                mek.message.extendedTextMessage?.text || 
+                                mek.message.imageMessage?.caption || "";
 
-            if (type === "conversation") {
-                body = mek.message.conversation;
-            } else if (type === "extendedTextMessage") {
-                body = mek.message.extendedTextMessage.text;
-            } else if (type === "imageMessage" && mek.message.imageMessage.caption) {
-                body = mek.message.imageMessage.caption;
-            } else if (type === "videoMessage" && mek.message.videoMessage.caption) {
-                body = mek.message.videoMessage.caption;
-            }
+            if (!textMessage) return;
 
-            if (!body) return;
+            const remoteJid = mek.key.remoteJid;
+            console.log(`[PESAN MASUK] Dari ${remoteJid}: "${textMessage}"`);
 
-            const from = mek.key.remoteJid;
-            const isGroup = from.endsWith("@g.us");
-            const args = body.trim().split(/ +/);
-            const command = args.shift().toLowerCase();
+            const command = textMessage.trim().toLowerCase();
 
-            console.log(`[PESAN DITERIMA] Dari: ${from} | Isi: ${body}`);
-
-            // Eksekusi Perintah
-            switch (command) {
-                case "!ping":
-                case ".ping":
-                    await sock.sendMessage(from, { text: "Pong! ⚡ Bot Jefri Berhasil Merespons!" }, { quoted: mek });
-                    console.log("--> Berhasil membalas !ping");
-                    break;
-
-                case "!menu":
-                case ".menu":
-                    const menuText = `🤖 *MENU BOT JEFRI* 🤖\n\n` +
-                                     `• !ping / .ping\n` +
-                                     `• !menu / .menu\n` +
-                                     `• !info\n\n` +
-                                     `Status: Terhubung & Normal!`;
-                    await sock.sendMessage(from, { text: menuText }, { quoted: mek });
-                    console.log("--> Berhasil membalas !menu");
-                    break;
-
-                case "!info":
-                    await sock.sendMessage(from, { text: "Bot Jefri aktif menggunakan Node.js dan Baileys di Railway." }, { quoted: mek });
-                    break;
+            if (command === "!ping" || command === ".ping") {
+                await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot merespons!" }, { quoted: mek });
+                console.log("-> Berhasil membalas !ping");
+            } else if (command === "!menu" || command === ".menu") {
+                await sock.sendMessage(remoteJid, { text: "🤖 Menu Bot Jefri Aktif!" }, { quoted: mek });
+                console.log("-> Berhasil membalas !menu");
             }
         } catch (err) {
-            console.log("Error Utama:", err);
+            console.log("Error pada upsert handler:", err);
         }
     });
 }
