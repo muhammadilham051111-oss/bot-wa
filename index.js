@@ -13,27 +13,29 @@ async function startBot() {
     const sock = makeWASocket({
         logger: pino({ level: "silent" }),
         auth: state,
-        browser: ["Ubuntu", "Chrome", "110.0.0.0"]
+        browser: ["Ubuntu", "Chrome", "110.0.0.0"],
+        markOnlineOnConnect: true
     });
 
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", (update) => {
         const { connection, lastDisconnect } = update;
-        console.log("Status Koneksi:", update);
         if (connection === "open") {
-            console.log("=== BOT BERHASIL TERHUBUNG & SIAP MENERIMA PESAN ===");
+            console.log("=== BOT TERHUBUNG & SIAP 100% ===");
         } else if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log("Koneksi terputus, mencoba reconnect:", shouldReconnect);
             if (shouldReconnect) startBot();
         }
     });
 
-    // Tangkap SEMUA event pesan masuk secara mentah
+    // Wajib ada agar riwayat dan pesan grup tersinkronisasi di Baileys
+    sock.ev.on("messaging-history.set", ({ messages }) => {
+        console.log(`[SYNC] Sinkronisasi riwayat pesan berhasil: ${messages.length} pesan`);
+    });
+
     sock.ev.on("messages.upsert", async (chatUpdate) => {
-        console.log("EVENT MENGIRIM DATA UPSERT:", JSON.stringify(chatUpdate, null, 2));
-        
+        console.log("--> ADA EVENT PESAN MASUK (UPSERT TERPANGGIL)!");
         try {
             const mek = chatUpdate.messages[0];
             if (!mek || !mek.message) return;
@@ -45,19 +47,19 @@ async function startBot() {
             if (!textMessage) return;
 
             const remoteJid = mek.key.remoteJid;
-            console.log(`[PESAN MASUK] Dari ${remoteJid}: "${textMessage}"`);
+            console.log(`[PESAN DITERIMA] Dari ${remoteJid}: "${textMessage}"`);
 
             const command = textMessage.trim().toLowerCase();
 
             if (command === "!ping" || command === ".ping") {
-                await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot merespons!" }, { quoted: mek });
-                console.log("-> Berhasil membalas !ping");
+                await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot Jefri Berhasil Merespons!" }, { quoted: mek });
+                console.log("-> Berhasil membalas !ping!");
             } else if (command === "!menu" || command === ".menu") {
-                await sock.sendMessage(remoteJid, { text: "🤖 Menu Bot Jefri Aktif!" }, { quoted: mek });
-                console.log("-> Berhasil membalas !menu");
+                await sock.sendMessage(remoteJid, { text: "🤖 Menu Bot Jefri Aktif & Normal!" }, { quoted: mek });
+                console.log("-> Berhasil membalas !menu!");
             }
         } catch (err) {
-            console.log("Error pada upsert handler:", err);
+            console.log("Error handler:", err);
         }
     });
 }
