@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, initAuthCreds, DisconnectReason } = require('@whiskeysockets/baileys');
 const { MongoClient } = require('mongodb');
 const P = require('pino');
 
@@ -13,21 +13,22 @@ async function startBot() {
 
     console.log('✅ Terhubung ke MongoDB Atlas!');
 
-    // Ambil sesi creds dengan aman dari MongoDB
-    let creds = undefined;
+    // Ambil sesi creds dari MongoDB
+    let creds;
     try {
         const credsDoc = await col.findOne({ filename: 'creds.json' });
         if (credsDoc && credsDoc.data) {
             creds = JSON.parse(credsDoc.data);
+        } else {
+            creds = initAuthCreds();
         }
     } catch (e) {
-        console.log('⚠️ Sesi creds.json rusak/tidak valid, membuat sesi baru...');
-        creds = undefined;
+        console.log('⚠️ Sesi creds.json tidak terbaca, inisialisasi ulang...');
+        creds = initAuthCreds();
     }
 
     const sock = makeWASocket({
         logger: P({ level: 'silent' }),
-        printQRInTerminal: true,
         auth: {
             creds: creds,
             keys: {
@@ -40,7 +41,7 @@ async function startBot() {
                                 data[id] = JSON.parse(doc.data);
                             }
                         } catch (err) {
-                            console.log(`⚠️ Gagal memuat key ${type}-${id}:`, err.message);
+                            // Abaikan error kunci individual jika tidak ada
                         }
                     }
                     return data;
@@ -51,7 +52,11 @@ async function startBot() {
                             const value = data[type][id];
                             const filename = `${type}-${id}.json`;
                             if (value) {
-                                await col.updateOne({ filename }, { $set: { filename, data: JSON.stringify(value) } }, { upsert: true });
+                                await col.updateOne(
+                                    { filename }, 
+                                    { $set: { filename, data: JSON.stringify(value) } }, 
+                                    { upsert: true }
+                                );
                             } else {
                                 await col.deleteOne({ filename });
                             }
@@ -71,10 +76,15 @@ async function startBot() {
     });
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            console.log('📱 Scan QR Code berikut jika diminta koneksi baru:');
+        }
+
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Koneksi terputus, mencoba menghubungkan kembali...', shouldReconnect);
+            console.log('Koneksi terputus, menghubungkan kembali...', shouldReconnect);
             if (shouldReconnect) {
                 startBot();
             }
