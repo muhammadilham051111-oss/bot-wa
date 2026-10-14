@@ -1,4 +1,3 @@
-
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const fs = require("fs");
@@ -10,7 +9,6 @@ function log(label, color, message) {
     console.log(`${color}${label}${C.reset} ${message}`); 
 }
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 let isStarting = false; 
 let reconnectTimer = null; 
 let activeSock = null;
@@ -41,13 +39,9 @@ async function startBot() {
                     { mode: 0o600 }
                 );
 
-                log("[SESI]", C.green, "Sesi awal berhasil dimuat.");
+                log("[SESI]", C.green, "Sesi awal berhasil dimuat dari environment.");
             } catch (err) {
-                log(
-                    "[ERROR SESI]",
-                    C.red,
-                    err.message
-                );
+                log("[ERROR SESI]", C.red, err.message);
                 return;
             }
         }
@@ -69,43 +63,21 @@ async function startBot() {
             const { connection, lastDisconnect } = update;
 
             if (connection === "connecting") {
-                log(
-                    "[KONEKSI]",
-                    C.yellow,
-                    "Sedang menghubungkan ke WhatsApp..."
-                );
+                log("[KONEKSI]", C.yellow, "Sedang menghubungkan ke WhatsApp...");
             }
 
             if (connection === "open") {
-                log(
-                    "[KONEKSI]",
-                    C.green + C.bold,
-                    "BOT BERHASIL TERHUBUNG!"
-                );
-
-                log(
-                    "[IDENTITAS BOT]",
-                    C.cyan,
-                    sock.user?.id || "ID belum tersedia"
-                );
+                log("[KONEKSI]", C.green + C.bold, "BOT BERHASIL TERHUBUNG & SIAP!");
+                log("[IDENTITAS BOT]", C.cyan, sock.user?.id || "ID belum tersedia");
             }
 
             if (connection === "close") {
-                const statusCode =
-                    lastDisconnect?.error?.output?.statusCode;
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-                const shouldReconnect =
-                    statusCode !== DisconnectReason.loggedOut;
+                log("[KONEKSI TERPUTUS]", C.red, `Kode=${statusCode ?? "tidak diketahui"} | Reconnect=${shouldReconnect}`);
 
-                log(
-                    "[KONEKSI TERPUTUS]",
-                    C.red,
-                    `Kode=${statusCode ?? "tidak diketahui"} | Reconnect=${shouldReconnect}`
-                );
-
-                if (activeSock === sock) {
-                    activeSock = null;
-                }
+                if (activeSock === sock) activeSock = null;
 
                 if (shouldReconnect && !reconnectTimer) {
                     reconnectTimer = setTimeout(async () => {
@@ -113,52 +85,24 @@ async function startBot() {
                         await startBot();
                     }, 3000);
                 } else if (!shouldReconnect) {
-                    log(
-                        "[SESI]",
-                        C.red,
-                        "Sesi logout. Periksa autentikasi sebelum menautkan ulang."
-                    );
+                    log("[SESI]", C.red, "Sesi logout.");
                 }
             }
         });
 
         sock.ev.on("messages.upsert", async ({ messages, type }) => {
-            log(
-                "[EVENT PESAN]",
-                C.cyan + C.bold,
-                `type=${type} | jumlah=${messages?.length || 0} | waktu=${new Date().toLocaleTimeString("id-ID")}`
-            );
+            log("[EVENT PESAN]", C.cyan + C.bold, `type=${type} | jumlah=${messages?.length || 0}`);
 
             for (const mek of messages || []) {
                 try {
-                    if (!mek) {
-                        log("[SKIP]", C.yellow, "Objek pesan kosong.");
-                        continue;
-                    }
+                    if (!mek || !mek.message) continue;
 
                     const jid = mek.key?.remoteJid;
-
-                    if (!jid) {
-                        log("[SKIP]", C.yellow, "JID tidak tersedia.");
-                        continue;
-                    }
-
-                    if (jid === "status@broadcast") {
-                        continue;
-                    }
-
-                    if (!mek.message) {
-                        log(
-                            "[PESAN KOSONG]",
-                            C.yellow,
-                            `JID=${jid}`
-                        );
-                        continue;
-                    }
+                    if (!jid || jid === "status@broadcast") continue;
 
                     let msg = mek.message;
 
-                    // Membuka pembungkus pesan
+                    // Unwrap pembungkus pesan lengkap
                     while (msg) {
                         if (msg.ephemeralMessage?.message) {
                             msg = msg.ephemeralMessage.message;
@@ -170,11 +114,14 @@ async function startBot() {
                             msg = msg.viewOnceMessageV2Extension.message;
                         } else if (msg.documentWithCaptionMessage?.message) {
                             msg = msg.documentWithCaptionMessage.message;
+                        } else if (msg.editedMessage?.message) {
+                            msg = msg.editedMessage.message;
                         } else {
                             break;
                         }
                     }
 
+                    // Ekstraksi teks dari berbagai kemungkinan objek Baileys
                     const textMessage =
                         msg.conversation ||
                         msg.extendedTextMessage?.text ||
@@ -186,154 +133,43 @@ async function startBot() {
                         msg.templateButtonReplyMessage?.selectedDisplayText ||
                         "";
 
-                    const chatType = jid.endsWith("@g.us")
-                        ? "GRUP"
-                        : "PRIBADI";
+                    log("[CHAT]", C.blue, `JID=${jid}`);
+                    log("[ISI PESAN DETEKSI]", textMessage ? C.green : C.yellow, textMessage ? JSON.stringify(textMessage) : `Teks kosong | Key Types: ${Object.keys(msg).join(", ")}`);
 
-                    const sender =
-                        mek.key?.participant ||
-                        mek.key?.remoteJid ||
-                        "Tidak diketahui";
+                    if (!textMessage.trim()) continue;
 
-                    log(
-                        "[CHAT]",
-                        C.blue,
-                        `${chatType} | JID=${jid}`
-                    );
-
-                    log(
-                        "[PENGIRIM]",
-                        C.magenta,
-                        sender
-                    );
-
-                    log(
-                        "[FROM ME]",
-                        C.gray,
-                        String(!!mek.key?.fromMe)
-                    );
-
-                    log(
-                        "[ISI PESAN]",
-                        textMessage ? C.green : C.yellow,
-                        textMessage
-                            ? JSON.stringify(textMessage)
-                            : `Teks tidak ditemukan | tipe=${Object.keys(msg).join(",")}`
-                    );
-
-                    if (!textMessage.trim()) {
-                        continue;
-                    }
-
-                    if (type !== "notify") {
-                        log(
-                            "[SKIP EVENT]",
-                            C.gray,
-                            `Event ${type} tidak diproses sebagai pesan baru.`
-                        );
-                        continue;
-                    }
-
-                    if (mek.key?.fromMe) {
-                        log(
-                            "[SKIP FROM ME]",
-                            C.gray,
-                            "Pesan dikirim oleh akun bot sendiri."
-                        );
-                        continue;
-                    }
+                    // Biarkan event "notify" atau pesan baru diolah
+                    if (mek.key?.fromMe) continue;
 
                     const command = textMessage.trim().toLowerCase();
 
-                    log(
-                        "[COMMAND]",
-                        C.cyan,
-                        command
-                    );
+                    log("[COMMAND]", C.cyan, command);
 
                     if (command === "!ping" || command === ".ping") {
-                        log(
-                            "[KIRIM]",
-                            C.yellow,
-                            `Mengirim balasan ping ke ${jid}`
-                        );
-
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text: "Pong! ⚡ Bot Jefri berhasil merespons!"
-                            },
-                            {
-                                quoted: mek
-                            }
-                        );
-
-                        log(
-                            "[SUKSES]",
-                            C.green + C.bold,
-                            `Balasan ping berhasil dikirim ke ${jid}`
-                        );
-
-                    } else if (
-                        command === "!menu" ||
-                        command === ".menu"
-                    ) {
-                        await sock.sendMessage(
-                            jid,
-                            {
-                                text:
-                                    "🤖 MENU BOT JEFRI\n\n" +
-                                    "• !ping / .ping\n" +
-                                    "• !menu / .menu\n\n" +
-                                    "Status: Online"
-                            },
-                            {
-                                quoted: mek
-                            }
-                        );
-
-                        log(
-                            "[SUKSES]",
-                            C.green + C.bold,
-                            `Menu berhasil dikirim ke ${jid}`
-                        );
-
-                    } else {
-                        log(
-                            "[TANPA COMMAND]",
-                            C.gray,
-                            "Pesan diterima, tetapi bukan perintah yang tersedia."
-                        );
+                        await sock.sendMessage(jid, { text: "Pong! ⚡ Bot Jefri berhasil merespons dari Railway!" }, { quoted: mek });
+                        log("[SUKSES]", C.green + C.bold, `Balasan ping terkirim ke ${jid}`);
+                    } else if (command === "!menu" || command === ".menu") {
+                        await sock.sendMessage(jid, { text: "🤖 MENU BOT JEFRI\n\n• !ping\n• !menu\n\nStatus: Online" }, { quoted: mek });
+                        log("[SUKSES]", C.green + C.bold, `Menu terkirim ke ${jid}`);
                     }
 
                 } catch (err) {
-                    log(
-                        "[ERROR HANDLER]",
-                        C.red + C.bold,
-                        err?.stack || String(err)
-                    );
+                    log("[ERROR HANDLER]", C.red + C.bold, err?.stack || String(err));
                 }
             }
         });
 
     } catch (err) {
-        log(
-            "[ERROR STARTBOT]",
-            C.red + C.bold,
-            err?.stack || String(err)
-        );
-
+        log("[ERROR STARTBOT]", C.red + C.bold, err?.stack || String(err));
         if (!reconnectTimer) {
             reconnectTimer = setTimeout(async () => {
                 reconnectTimer = null;
                 await startBot();
             }, 5000);
         }
-
     } finally {
         isStarting = false;
     }
 }
 
 startBot();
-
