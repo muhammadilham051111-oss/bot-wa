@@ -13,7 +13,8 @@ async function startBot() {
     const sock = makeWASocket({
         logger: pino({ level: "silent" }),
         auth: state,
-        browser: ["Ubuntu", "Chrome", "20.04.0"]
+        browser: ["Ubuntu", "Chrome", "110.0.0.0"],
+        markOnlineOnConnect: true // Membuat bot langsung terbaca online agar stabil
     });
 
     sock.ev.on("creds.update", saveCreds);
@@ -21,32 +22,30 @@ async function startBot() {
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === "open") {
-            console.log("Jefri Bot Berhasil Terhubung ke WhatsApp!");
+            console.log("Jefri Bot Berhasil Terhubung secara Cepat!");
         } else if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log("Koneksi terputus, mencoba menghubungkan ulang...", shouldReconnect);
             if (shouldReconnect) startBot();
         }
     });
 
     sock.ev.on("messages.upsert", async (m) => {
         try {
-            for (const msg of m.messages) {
-                if (!msg.message) continue;
+            const msg = m.messages[0];
+            if (!msg.message || msg.key.fromMe) return; // Abaikan pesan dari bot sendiri agar lebih ringan
 
-                // Ambil isi teks pesan
-                const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
-                const remoteJid = msg.key.remoteJid;
+            const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+            if (!textMessage) return;
 
-                console.log(`[PESAN MASUK] Dari: ${remoteJid} | Isi: ${textMessage}`);
+            const remoteJid = msg.key.remoteJid;
+            const command = textMessage.trim().toLowerCase();
 
-                // Respon jika mengetik !ping
-                if (textMessage.trim().toLowerCase() === "!ping") {
-                    await sock.sendMessage(remoteJid, { text: "Pong! Bot Jefri aktif 24/7." }, { quoted: msg });
-                }
+            // Respon instan untuk !ping
+            if (command === "!ping") {
+                await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Respon cepat aktif." }, { quoted: msg });
             }
         } catch (err) {
-            console.log("Abaikan error dekripsi:", err.message);
+            // Abaikan error minor agar bot tidak tersendat
         }
     });
 }
