@@ -30,19 +30,23 @@ async function startBot() {
     });
 
     sock.ev.on("messages.upsert", async (m) => {
-        for (const msg of m.messages) {
-            if (!msg.message) continue;
+        try {
+            for (const msg of m.messages) {
+                if (!msg.message) continue;
 
-            // Ambil isi teks pesan
-            const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
-            const remoteJid = msg.key.remoteJid;
+                // Ambil isi teks pesan
+                const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
+                const remoteJid = msg.key.remoteJid;
 
-            console.log(`[PESAN MASUK] Dari: ${remoteJid} | Isi: ${textMessage}`);
+                console.log(`[PESAN MASUK] Dari: ${remoteJid} | Isi: ${textMessage}`);
 
-            // Respon jika mengetik !ping (Abaikan kapitalisasi / spasi)
-            if (textMessage.trim().toLowerCase() === "!ping") {
-                await sock.sendMessage(remoteJid, { text: "Pong! Bot Jefri aktif 24/7." }, { quoted: msg });
+                // Respon jika mengetik !ping
+                if (textMessage.trim().toLowerCase() === "!ping") {
+                    await sock.sendMessage(remoteJid, { text: "Pong! Bot Jefri aktif 24/7." }, { quoted: msg });
+                }
             }
+        } catch (err) {
+            console.log("Abaikan error dekripsi:", err.message);
         }
     });
 }
