@@ -34,9 +34,6 @@ async function startBot() {
             const mek = chatUpdate.messages[0];
             if (!mek.message) return;
 
-            // Debug log ke Railway untuk melihat setiap pesan yang masuk
-            console.log("Pesan diterima dari:", mek.key.remoteJid);
-
             const messageType = Object.keys(mek.message)[0];
             let textMessage = "";
 
@@ -49,17 +46,16 @@ async function startBot() {
             }
 
             if (!textMessage) return;
-            console.log("Isi Teks:", textMessage);
 
             const remoteJid = mek.key.remoteJid;
             const command = textMessage.trim().toLowerCase();
 
-            // Respon otomatis untuk perintah ping
+            // IZINKAN bot membalas perintah meskipun dikirim oleh diri sendiri (fromMe)
             if (command === "!ping" || command === ".ping") {
                 await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot Jefri merespons dengan cepat." }, { quoted: mek });
             }
         } catch (err) {
-            console.log("Error pada handler pesan:", err);
+            console.log("Error:", err);
         }
     });
 }
