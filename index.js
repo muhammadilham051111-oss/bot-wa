@@ -25,27 +25,24 @@ async function startBot() {
         } else if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log("Koneksi terputus, mencoba menghubungkan ulang...", shouldReconnect);
-            if (shouldReconnect) {
-                startBot();
-            }
+            if (shouldReconnect) startBot();
         }
     });
 
     sock.ev.on("messages.upsert", async (m) => {
-        const msg = m.messages[0];
-        if (!msg.message) return;
-        
-        // Ambil teks pesan (mendukung berbagai jenis pesan)
-        const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
-        
-        // Ambil nomor pengirim
-        const remoteJid = msg.key.remoteJid;
+        for (const msg of m.messages) {
+            if (!msg.message) continue;
 
-        console.log("Pesan diterima:", textMessage);
+            // Ambil isi teks pesan
+            const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
+            const remoteJid = msg.key.remoteJid;
 
-        // Respon untuk perintah !ping (termasuk dari chat diri sendiri)
-        if (textMessage.trim() === "!ping") {
-            await sock.sendMessage(remoteJid, { text: "Pong! Bot Jefri aktif 24/7." }, { quoted: msg });
+            console.log(`[PESAN MASUK] Dari: ${remoteJid} | Isi: ${textMessage}`);
+
+            // Respon jika mengetik !ping (Abaikan kapitalisasi / spasi)
+            if (textMessage.trim().toLowerCase() === "!ping") {
+                await sock.sendMessage(remoteJid, { text: "Pong! Bot Jefri aktif 24/7." }, { quoted: msg });
+            }
         }
     });
 }
