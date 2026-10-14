@@ -2,15 +2,10 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const { MongoClient } = require('mongodb');
 const P = require('pino');
 
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://muhammadilham:jefribotnew@cluster0.o1fagsh.mongodb.net/whatsapp_bot?retryWrites=true&w=majority";
+const MONGODB_URI = "mongodb+srv://muhammadilham:jefribotnew@cluster0.o1fagsh.mongodb.net/whatsapp_bot?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=true";
 
 async function startBot() {
-    // Menambahkan opsi TLS eksplisit untuk mengatasi error SSL di Node.js v24
-    const client = new MongoClient(MONGODB_URI, {
-        tls: true,
-        tlsAllowInvalidCertificates: true,
-        tlsInsecure: true
-    });
+    const client = new MongoClient(MONGODB_URI);
 
     await client.connect();
     const db = client.db('whatsapp_bot');
@@ -18,7 +13,6 @@ async function startBot() {
 
     console.log('✅ Terhubung ke MongoDB Atlas!');
 
-    // Ambil sesi creds dari MongoDB
     const credsDoc = await col.findOne({ filename: 'creds.json' });
     let creds = credsDoc ? JSON.parse(credsDoc.data) : undefined;
 
