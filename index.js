@@ -13,8 +13,17 @@ async function startBot() {
 
     console.log('✅ Terhubung ke MongoDB Atlas!');
 
-    const credsDoc = await col.findOne({ filename: 'creds.json' });
-    let creds = credsDoc ? JSON.parse(credsDoc.data) : undefined;
+    // Ambil sesi creds dengan aman dari MongoDB
+    let creds = undefined;
+    try {
+        const credsDoc = await col.findOne({ filename: 'creds.json' });
+        if (credsDoc && credsDoc.data) {
+            creds = JSON.parse(credsDoc.data);
+        }
+    } catch (e) {
+        console.log('⚠️ Sesi creds.json rusak/tidak valid, membuat sesi baru...');
+        creds = undefined;
+    }
 
     const sock = makeWASocket({
         logger: P({ level: 'silent' }),
@@ -25,8 +34,14 @@ async function startBot() {
                 get: async (type, ids) => {
                     const data = {};
                     for (const id of ids) {
-                        const doc = await col.findOne({ filename: `${type}-${id}.json` });
-                        if (doc) data[id] = JSON.parse(doc.data);
+                        try {
+                            const doc = await col.findOne({ filename: `${type}-${id}.json` });
+                            if (doc && doc.data) {
+                                data[id] = JSON.parse(doc.data);
+                            }
+                        } catch (err) {
+                            console.log(`⚠️ Gagal memuat key ${type}-${id}:`, err.message);
+                        }
                     }
                     return data;
                 },
