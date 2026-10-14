@@ -2,17 +2,23 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const { MongoClient } = require('mongodb');
 const P = require('pino');
 
-const MONGODB_URI = "mongodb+srv://muhammadilham:jefribotnew@cluster0.o1fagsh.mongodb.net/whatsapp_bot?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=true";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://muhammadilham:jefribotnew@cluster0.o1fagsh.mongodb.net/whatsapp_bot?retryWrites=true&w=majority";
 
 async function startBot() {
-    const client = new MongoClient(MONGODB_URI);
+    // Menambahkan opsi TLS eksplisit untuk mengatasi error SSL di Node.js v24
+    const client = new MongoClient(MONGODB_URI, {
+        tls: true,
+        tlsAllowInvalidCertificates: true,
+        tlsInsecure: true
+    });
+
     await client.connect();
     const db = client.db('whatsapp_bot');
     const col = db.collection('sessions');
 
     console.log('✅ Terhubung ke MongoDB Atlas!');
 
-    // Simulasi auth state sederhana dari MongoDB
+    // Ambil sesi creds dari MongoDB
     const credsDoc = await col.findOne({ filename: 'creds.json' });
     let creds = credsDoc ? JSON.parse(credsDoc.data) : undefined;
 
@@ -47,7 +53,6 @@ async function startBot() {
         }
     });
 
-    // Simpan kredensial saat ada pembaruan
     sock.ev.on('creds.update', async () => {
         await col.updateOne(
             { filename: 'creds.json' },
@@ -56,7 +61,6 @@ async function startBot() {
         );
     });
 
-    // Penanganan Koneksi
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
@@ -70,17 +74,14 @@ async function startBot() {
         }
     });
 
-    // Penanganan Pesan Masuk (Aman dari Looping & Mendukung Pesan Sendiri)
     sock.ev.on('messages.upsert', async (m) => {
         const msg = m.messages[0];
         if (!msg || !msg.message) return;
 
-        // Ambil teks pesan dari berbagai jenis format pesan WhatsApp
         const body = msg.message.conversation || 
                      msg.message.extendedTextMessage?.text || 
                      '';
 
-        // Cek perintah !ping (aman dipicu dari nomor sendiri maupun orang lain)
         if (body.trim() === '!ping') {
             await sock.sendMessage(msg.key.remoteJid, { 
                 text: 'Pong! ⚡ Bot aktif menggunakan MongoDB Atlas!' 
