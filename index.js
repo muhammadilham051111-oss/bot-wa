@@ -14,7 +14,7 @@ async function startBot() {
         logger: pino({ level: "silent" }),
         auth: state,
         browser: ["Ubuntu", "Chrome", "110.0.0.0"],
-        markOnlineOnConnect: true // Membuat bot langsung terbaca online agar stabil
+        markOnlineOnConnect: true
     });
 
     sock.ev.on("creds.update", saveCreds);
@@ -31,21 +31,22 @@ async function startBot() {
 
     sock.ev.on("messages.upsert", async (m) => {
         try {
-            const msg = m.messages[0];
-            if (!msg.message || msg.key.fromMe) return; // Abaikan pesan dari bot sendiri agar lebih ringan
+            for (const msg of m.messages) {
+                if (!msg.message) continue;
 
-            const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
-            if (!textMessage) return;
+                const textMessage = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+                if (!textMessage) continue;
 
-            const remoteJid = msg.key.remoteJid;
-            const command = textMessage.trim().toLowerCase();
+                const remoteJid = msg.key.remoteJid;
+                const command = textMessage.trim().toLowerCase();
 
-            // Respon instan untuk !ping
-            if (command === "!ping") {
-                await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Respon cepat aktif." }, { quoted: msg });
+                // Balas !ping maupun .ping (Bisa dari kamu sendiri maupun orang lain)
+                if (command === "!ping" || command === ".ping") {
+                    await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Respon cepat aktif." }, { quoted: msg });
+                }
             }
         } catch (err) {
-            // Abaikan error minor agar bot tidak tersendat
+            // Abaikan error minor
         }
     });
 }
