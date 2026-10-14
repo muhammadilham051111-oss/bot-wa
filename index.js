@@ -22,7 +22,7 @@ async function startBot() {
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === "open") {
-            console.log("Jefri Bot Berhasil Terhubung dan Siap Merespons!");
+            console.log("=== BOT JEFRI AKTIF & SIAP DENGAN FITUR BARU ===");
         } else if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startBot();
@@ -31,31 +31,58 @@ async function startBot() {
 
     sock.ev.on("messages.upsert", async (chatUpdate) => {
         try {
-            const mek = chatUpdate.messages[0];
-            if (!mek.message) return;
+            for (const mek of chatUpdate.messages) {
+                if (!mek.message) continue;
 
-            const messageType = Object.keys(mek.message)[0];
-            let textMessage = "";
+                // Ambil teks dari berbagai jenis pesan
+                const textMessage = mek.message.conversation || 
+                                    mek.message.extendedTextMessage?.text || 
+                                    mek.message.imageMessage?.caption || "";
 
-            if (messageType === "conversation") {
-                textMessage = mek.message.conversation;
-            } else if (messageType === "extendedTextMessage") {
-                textMessage = mek.message.extendedTextMessage.text;
-            } else if (messageType === "imageMessage" && mek.message.imageMessage.caption) {
-                textMessage = mek.message.imageMessage.caption;
-            }
+                if (!textMessage) continue;
 
-            if (!textMessage) return;
+                const remoteJid = mek.key.remoteJid;
+                const isGroup = remoteJid.endsWith("@g.us");
+                const args = textMessage.trim().split(/ +/);
+                const command = args.shift().toLowerCase();
 
-            const remoteJid = mek.key.remoteJid;
-            const command = textMessage.trim().toLowerCase();
+                console.log(`[PESAN MASUK] ${remoteJid}: ${textMessage}`);
 
-            // IZINKAN bot membalas perintah meskipun dikirim oleh diri sendiri (fromMe)
-            if (command === "!ping" || command === ".ping") {
-                await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot Jefri merespons dengan cepat." }, { quoted: mek });
+                // --- HANDLER COMMAND ---
+
+                // 1. Perintah !ping / .ping
+                if (command === "!ping" || command === ".ping") {
+                    await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot Jefri aktif 24/7 di Railway." }, { quoted: mek });
+                }
+
+                // 2. Perintah !menu / .menu
+                else if (command === "!menu" || command === ".menu") {
+                    const menuText = `🤖 *JEFRI BOT MULTI-FUNCTION* 🤖\n\n` +
+                                     `📌 *Daftar Perintah:*\n` +
+                                     `• *!ping* / *.ping* - Cek respon bot\n` +
+                                     `• *!menu* / *.menu* - Menampilkan daftar perintah\n` +
+                                     `• *!hidetag <teks>* - Tag semua anggota grup\n` +
+                                     `• *!info* - Informasi bot\n\n` +
+                                     `⚡ *Status:* Online (Railway Singapore)`;
+                    await sock.sendMessage(remoteJid, { text: menuText }, { quoted: mek });
+                }
+
+                // 3. Perintah !info / .info
+                else if (command === "!info" || command === ".info") {
+                    await sock.sendMessage(remoteJid, { text: "ℹ️ *Jefri Bot* dikembangkan menggunakan Node.js & Baileys Multi-Device, di-host di Railway." }, { quoted: mek });
+                }
+
+                // 4. Perintah !hidetag (Khusus Grup)
+                else if ((command === "!hidetag" || command === ".hidetag") && isGroup) {
+                    const groupMetadata = await sock.groupMetadata(remoteJid);
+                    const participants = groupMetadata.participants.map(p => p.id);
+                    const tagMessage = args.join(" ") || "Pengumuman!";
+                    
+                    await sock.sendMessage(remoteJid, { text: tagMessage, mentions: participants });
+                }
             }
         } catch (err) {
-            console.log("Error:", err);
+            console.log("Error handling command:", err);
         }
     });
 }
