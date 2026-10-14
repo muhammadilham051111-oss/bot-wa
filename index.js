@@ -2,7 +2,7 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const { MongoClient } = require('mongodb');
 const P = require('pino');
 
-const MONGODB_URI = "mongodb+srv://muhammadilham:jefribotnew@cluster0.o1fagsh.mongodb.net/?appName=Cluster0&tls=true&retryWrites=true";
+const MONGODB_URI = "mongodb+srv://muhammadilham:jefribotnew@cluster0.o1fagsh.mongodb.net/whatsapp_bot?retryWrites=true&w=majority&tls=true&tlsAllowInvalidCertificates=true";
 
 async function startBot() {
     const client = new MongoClient(MONGODB_URI);
