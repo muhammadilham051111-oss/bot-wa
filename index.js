@@ -1,3 +1,4 @@
+
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 
@@ -22,49 +23,79 @@ async function startBot() {
     sock.ev.on("connection.update", (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === "open") {
-            console.log("=== BOT SIAP MENANGKAP PESAN GRUP ===");
+            console.log("=== BOT BERHASIL TERHUBUNG & SIAP ===");
         } else if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startBot();
         }
     });
 
-    sock.ev.on("messages.upsert", async (chatUpdate) => {
-        try {
-            const mek = chatUpdate.messages[0];
-            if (!mek || !mek.message) return;
+    sock.ev.on("messages.upsert", async ({ messages, type }) => {
+        console.log(`[EVENT PESAN] type=${type}, jumlah=${messages?.length || 0}`);
 
-            // Unwrap ephemeralMessage jika grup menggunakan pesan sementara
-            let msgContent = mek.message;
-            if (msgContent.ephemeralMessage) {
-                msgContent = msgContent.ephemeralMessage.message;
+        for (const mek of messages || []) {
+            try {
+                if (!mek.message) continue;
+
+                const jid = mek.key.remoteJid;
+                if (!jid || jid === "status@broadcast") continue;
+
+                let msg = mek.message;
+
+                while (msg) {
+                    if (msg.ephemeralMessage?.message) {
+                        msg = msg.ephemeralMessage.message;
+                    } else if (msg.viewOnceMessage?.message) {
+                        msg = msg.viewOnceMessage.message;
+                    } else if (msg.viewOnceMessageV2?.message) {
+                        msg = msg.viewOnceMessageV2.message;
+                    } else if (msg.documentWithCaptionMessage?.message) {
+                        msg = msg.documentWithCaptionMessage.message;
+                    } else {
+                        break;
+                    }
+                }
+
+                const textMessage =
+                    msg.conversation ||
+                    msg.extendedTextMessage?.text ||
+                    msg.imageMessage?.caption ||
+                    msg.videoMessage?.caption ||
+                    msg.documentMessage?.caption ||
+                    "";
+
+                console.log(
+                    `[PESAN MASUK] jid=${jid} fromMe=${!!mek.key.fromMe} text=${JSON.stringify(textMessage)}`
+                );
+
+                if (!textMessage.trim()) continue;
+
+                const command = textMessage.trim().toLowerCase();
+
+                if (command === "!ping" || command === ".ping") {
+                    await sock.sendMessage(
+                        jid,
+                        { text: "Pong! ⚡ Bot Jefri berhasil merespons!" },
+                        { quoted: mek }
+                    );
+                    console.log(`[BALASAN BERHASIL] ${jid}`);
+                } else if (command === "!menu" || command === ".menu") {
+                    await sock.sendMessage(
+                        jid,
+                        {
+                            text:
+                                "🤖 MENU BOT JEFRI\n\n" +
+                                "• !ping / .ping\n" +
+                                "• !menu / .menu\n\n" +
+                                "Status: Online"
+                        },
+                        { quoted: mek }
+                    );
+                    console.log(`[MENU TERKIRIM] ${jid}`);
+                }
+            } catch (err) {
+                console.error("[ERROR HANDLER PESAN]", err?.stack || err);
             }
-
-            // Ekstrak teks dengan aman dari berbagai bentuk pesan
-            const textMessage = msgContent.conversation || 
-                                msgContent.extendedTextMessage?.text || 
-                                msgContent.imageMessage?.caption || "";
-
-            if (!textMessage) return;
-
-            const remoteJid = mek.key.remoteJid;
-            console.log(`[PESAN MASUK] Dari ${remoteJid}: "${textMessage}"`);
-
-            const command = textMessage.trim().toLowerCase();
-
-            if (command === "!ping" || command === ".ping") {
-                await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot Jefri Berhasil Merespons!" }, { quoted: mek });
-                console.log("-> Berhasil membalas !ping");
-            } else if (command === "!menu" || command === ".menu") {
-                const menuText = `🤖 *MENU BOT JEFRI* 🤖\n\n` +
-                                 `• !ping / .ping\n` +
-                                 `• !menu / .menu\n\n` +
-                                 `Status: Online & Normal!`;
-                await sock.sendMessage(remoteJid, { text: menuText }, { quoted: mek });
-                console.log("-> Berhasil membalas !menu");
-            }
-        } catch (err) {
-            console.log("Error handler:", err);
         }
     });
 }
