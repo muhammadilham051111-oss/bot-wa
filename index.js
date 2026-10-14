@@ -33,7 +33,7 @@ async function startBot() {
     });
     sock.ev.on("messages.upsert", async (m) => {
         const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+        if (!msg.message || false) return;
         const body = msg.message.conversation || msg.message.extendedTextMessage?.text;
         if (body === "!ping") {
             await sock.sendMessage(msg.key.remoteJid, { text: "Pong! Bot Jefri aktif 24/7." });
