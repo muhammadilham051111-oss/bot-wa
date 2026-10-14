@@ -22,41 +22,46 @@ async function startBot() {
     sock.ev.on("connection.update", (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === "open") {
-            console.log("=== BOT TERHUBUNG & SIAP 100% ===");
+            console.log("=== BOT SIAP MENANGKAP PESAN GRUP ===");
         } else if (connection === "close") {
             const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startBot();
         }
     });
 
-    // Wajib ada agar riwayat dan pesan grup tersinkronisasi di Baileys
-    sock.ev.on("messaging-history.set", ({ messages }) => {
-        console.log(`[SYNC] Sinkronisasi riwayat pesan berhasil: ${messages.length} pesan`);
-    });
-
     sock.ev.on("messages.upsert", async (chatUpdate) => {
-        console.log("--> ADA EVENT PESAN MASUK (UPSERT TERPANGGIL)!");
         try {
             const mek = chatUpdate.messages[0];
             if (!mek || !mek.message) return;
 
-            const textMessage = mek.message.conversation || 
-                                mek.message.extendedTextMessage?.text || 
-                                mek.message.imageMessage?.caption || "";
+            // Unwrap ephemeralMessage jika grup menggunakan pesan sementara
+            let msgContent = mek.message;
+            if (msgContent.ephemeralMessage) {
+                msgContent = msgContent.ephemeralMessage.message;
+            }
+
+            // Ekstrak teks dengan aman dari berbagai bentuk pesan
+            const textMessage = msgContent.conversation || 
+                                msgContent.extendedTextMessage?.text || 
+                                msgContent.imageMessage?.caption || "";
 
             if (!textMessage) return;
 
             const remoteJid = mek.key.remoteJid;
-            console.log(`[PESAN DITERIMA] Dari ${remoteJid}: "${textMessage}"`);
+            console.log(`[PESAN MASUK] Dari ${remoteJid}: "${textMessage}"`);
 
             const command = textMessage.trim().toLowerCase();
 
             if (command === "!ping" || command === ".ping") {
                 await sock.sendMessage(remoteJid, { text: "Pong! ⚡ Bot Jefri Berhasil Merespons!" }, { quoted: mek });
-                console.log("-> Berhasil membalas !ping!");
+                console.log("-> Berhasil membalas !ping");
             } else if (command === "!menu" || command === ".menu") {
-                await sock.sendMessage(remoteJid, { text: "🤖 Menu Bot Jefri Aktif & Normal!" }, { quoted: mek });
-                console.log("-> Berhasil membalas !menu!");
+                const menuText = `🤖 *MENU BOT JEFRI* 🤖\n\n` +
+                                 `• !ping / .ping\n` +
+                                 `• !menu / .menu\n\n` +
+                                 `Status: Online & Normal!`;
+                await sock.sendMessage(remoteJid, { text: menuText }, { quoted: mek });
+                console.log("-> Berhasil membalas !menu");
             }
         } catch (err) {
             console.log("Error handler:", err);
